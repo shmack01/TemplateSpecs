@@ -1,0 +1,148 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "AppGW_Name": {
+            "defaultValue": "myappgw",
+            "type": "String"
+        },
+        "Vnet_Id": {
+            "defaultValue": "/subscriptions/00-000-000-0000/resourceGroups/testdeployment/providers/Microsoft.Network/virtualNetworks/testdeploymentvnet",
+            "type": "String"
+        },
+        "location": {
+            "defaultValue": "[resourceGroup().location]",
+            "type": "String"
+        },
+        "privateip": {
+            "defaultValue": "10.0.1.100",
+            "type": "String"
+        },
+        "PublicIPAddresses_Id": {
+            "defaultValue": "/subscriptions/00-000-000-000/resourceGroups/testdeployment/providers/Microsoft.Network/publicIPAddresses/testdeploymentpip",
+            "type": "String"
+        }
+    },
+    "variables": {
+        "subnet": "[concat(parameters('Vnet_Id'), '/subnets/appgw')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/applicationGateways",
+            "apiVersion": "2020-11-01",
+            "name": "[parameters('AppGW_Name')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "sku": {
+                    "name": "WAF_v2",
+                    "tier": "WAF_v2",
+                    "capacity": 2
+                },
+                "gatewayIPConfigurations": [
+                    {
+                        "name": "appGatewayIpConfig",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnet')]"
+                            }
+                        }
+                    }
+                ],
+                "frontendIPConfigurations": [
+                    {
+                        "name": "appGwPublicFrontendIp",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[parameters('PublicIPAddresses_Id')]"
+                            }
+                        }
+                    },
+                    {
+                        "name": "appGwPrivateFrontendIp",
+                        "properties": {
+                            "privateIPAddress": "[parameters('privateip')]",
+                            "privateIPAllocationMethod": "Static",
+                            "subnet": {
+                                "id": "[variables('subnet')]"
+                            }
+                        }
+                    }
+                ],
+                "frontendPorts": [
+                    {
+                        "name": "port_80",
+                        "properties": {
+                            "port": 80
+                        }
+                    }
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "NoTarget",
+                        "properties": {
+                            "backendAddresses": []
+                        }
+                    }
+                ],
+                "backendHttpSettingsCollection": [
+                    {
+                        "name": "privatehttp",
+                        "properties": {
+                            "port": 80,
+                            "protocol": "Http",
+                            "cookieBasedAffinity": "Disabled",
+                            "pickHostNameFromBackendAddress": true,
+                            "affinityCookieName": "ApplicationGatewayAffinity",
+                            "requestTimeout": 20
+                        }
+                    }
+                ],
+                "httpListeners": [
+                    {
+                        "name": "privatelistener",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', parameters('AppGW_Name')), '/frontendIPConfigurations/appGwPrivateFrontendIp')]"
+                            },
+                            "frontendPort": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', parameters('AppGW_Name')), '/frontendPorts/port_80')]"
+                            },
+                            "protocol": "Http",
+                            "hostNames": [],
+                            "requireServerNameIndication": false
+                        }
+                    }
+                ],
+                "requestRoutingRules": [
+                    {
+                        "name": "privateendpointapp",
+                        "properties": {
+                            "ruleType": "Basic",
+                            "httpListener": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', parameters('AppGW_Name')), '/httpListeners/privatelistener')]"
+                            },
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', parameters('AppGW_Name')), '/backendAddressPools/NoTarget')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', parameters('AppGW_Name')), '/backendHttpSettingsCollection/privatehttp')]"
+                            }
+                        }
+                    }
+                ],
+                "webApplicationFirewallConfiguration": {
+                    "enabled": false,
+                    "firewallMode": "Detection",
+                    "ruleSetType": "OWASP",
+                    "ruleSetVersion": "3.0",
+                    "disabledRuleGroups": [],
+                    "requestBodyCheck": true,
+                    "maxRequestBodySizeInKb": 128,
+                    "fileUploadLimitInMb": 100
+                },
+                "enableHttp2": true
+            }
+        }
+    ]
+}
